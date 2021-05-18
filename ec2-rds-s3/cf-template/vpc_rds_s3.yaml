@@ -1,0 +1,479 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  AWS CloudFormation Template for VPC. VPS contains IGW,
+  public subnet for web and private subnet for DB
+Parameters:
+  # EC2 Parameters
+  KeyName:
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t1.micro
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+    ConstraintDescription: must be a valid EC2 instance type.
+  # DB Parameters
+  DBInstanceType:
+    Description: The database instance type
+    Type: String
+    Default: db.t2.micro
+    AllowedValues: [db.t1.micro, db.m1.small, db.m1.medium, db.m1.large, db.m1.xlarge,
+      db.m2.xlarge, db.m2.2xlarge, db.m2.4xlarge, db.m3.medium, db.m3.large, db.m3.xlarge,
+      db.m3.2xlarge, db.m4.large, db.m4.xlarge, db.m4.2xlarge, db.m4.4xlarge, db.m4.10xlarge,
+      db.r3.large, db.r3.xlarge, db.r3.2xlarge, db.r3.4xlarge, db.r3.8xlarge, db.m2.xlarge,
+      db.m2.2xlarge, db.m2.4xlarge, db.cr1.8xlarge, db.t2.micro, db.t2.small, db.t2.medium,
+      db.t2.large]
+    ConstraintDescription: must select a valid database instance type.
+  DBInstanceIdentifier:
+    Description: The database instance identifier
+    Type: String
+    Default: attachment
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric
+      characters.
+  DBName:
+    Description: The database name
+    Type: String
+    Default: attachment
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric
+      characters.
+  DBUser:
+    Description: The database admin account username
+    Type: String
+    MinLength: 1
+    MaxLength: 16
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric
+      characters.
+  DBPassword:
+    NoEcho: true
+    Description: The database admin account password
+    Type: String
+    MinLength: 1
+    MaxLength: 41
+    AllowedPattern: '[a-zA-Z0-9]+'
+    ConstraintDescription: must contain only alphanumeric characters.
+  DBAllocatedStorage:
+    Description: The size of the database (Gb)
+    Type: Number
+    Default: 5
+    MinValue: 5
+    MaxValue: 1024
+    ConstraintDescription: must be between 5 and 1024Gb.
+  #VPC Parameters
+  SSHLocation:
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+    # my ip 46.53.248.229/32
+    Default: 0.0.0.0/0
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    MaxLength: '18'
+    MinLength: '9'
+    Type: String
+  VPCCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: The IP address for VPC
+  PublicSubnetACIDR:
+    Type: String
+    Default: 10.0.10.0/24
+    Description: Public Subnet-A CIDR
+  PublicSubnetBCIDR:
+    Type: String
+    Default: 10.0.20.0/24
+    Description: Public Subnet-B CIDR
+  DatabaseSubnetACIDR:
+    Type: String
+    Default: 10.0.11.0/24
+    Description: Database Subnet CIDR
+  DatabaseSubnetBCIDR:
+    Type: String
+    Default: 10.0.21.0/24
+    Description: Database Subnet CIDR
+Mappings:
+  AWSInstanceType2Arch:
+    t1.micro:
+      Arch: HVM64
+    t2.nano:
+      Arch: HVM64
+    t2.micro:
+      Arch: HVM64
+    t2.small:
+      Arch: HVM64
+    t2.medium:
+      Arch: HVM64
+    t2.large:
+      Arch: HVM64
+  AWSRegionArch2AMI:
+    eu-west-1:
+      HVM64: ami-063d4ab14480ac177
+    eu-west-2:
+      HVM64: ami-06dc09bb8854cbde3
+    eu-west-3:
+      HVM64: ami-0b3e57ee3b63dd76b
+    eu-central-1:
+      HVM64: ami-043097594a7df80ec
+Resources:
+  # Create VCP, NetworkAcl, IGW
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref "AWS::StackName", "Network" ] ]
+  NetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    DependsOn: VPC
+    Properties:
+       VpcId: !Ref VPC
+       Tags:
+       - Key: Name
+         Value: !Join [ "-", [ !Ref "AWS::StackName", "NetworkAcl" ] ]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref "AWS::StackName", "IGW" ] ]
+  VPCGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    DependsOn: VPC
+    Properties:
+      VpcId:  !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  # Create public subnets and route table
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnetACIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref "AWS::StackName", "PublicSubnet-A" ] ]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnetBCIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref "AWS::StackName", "PublicSubnet-B" ] ]
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref "AWS::StackName", "PublicRouteTable" ] ]
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: PublicSubnetA
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: PublicSubnetB
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+  # Create db subnets and route table
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref DatabaseSubnetACIDR
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabaseSubnet-A
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref DatabaseSubnetBCIDR
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabaseSubnet-B
+  DatabaseRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabaseRouteTable
+  DatabaseSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: DatabaseSubnetA
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      SubnetId: !Ref DatabaseSubnetA
+  DatabaseSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: DatabaseSubnetB
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      SubnetId: !Ref DatabaseSubnetB
+  # Create security groups
+  HttpsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: VPC
+    Properties:
+      GroupName: Http/s
+      GroupDescription: Allow http/s to client host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Https-SG
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: VPC
+    Properties:
+      GroupName: SSH
+      GroupDescription: Allow SSH to client host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-SSH-SG
+  PingSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: VPC
+    Properties:
+      GroupName: ICMP
+      GroupDescription: Allow ping to client host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: ICMP
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Ping-SG
+  PostgresSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: HttpsSecurityGroup
+    Properties:
+      GroupName: Postgres
+      GroupDescription: Allow WebServer connect to Postgres
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref HttpsSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Postgres-SG
+  # Create IAM role for app S3ReadWrite, RDS access
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AttachmentIAMRole
+      Description: IAM Role for EC2 to access S3 and RDS
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-AttachmentIAMRole
+  IAMRoleInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    DependsOn: IAMRole
+    Properties:
+      Path: /
+      Roles:
+        - !Ref IAMRole
+  # Create Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: ApplicationLoadBalancer
+      Type: application
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ApplicationLoadBalancer
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: ALBTargetGroup
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      Port: 8080
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ApplicationLoadBalancer-TargetGroup
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 8080
+      Protocol: HTTP
+  # Create Web server Launch Template
+  WebServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: WebServerLaunchTemplate
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        ImageId: !FindInMap [ AWSRegionArch2AMI, !Ref "AWS::Region", !FindInMap [ AWSInstanceType2Arch, !Ref "InstanceType", Arch ] ]
+        KeyName: !Ref KeyName
+        IamInstanceProfile:
+          Name: !Ref IAMRoleInstanceProfile
+        SecurityGroupIds:
+          - !Ref HttpsSecurityGroup
+          - !Ref SSHSecurityGroup
+          - !Ref PingSecurityGroup
+        UserData:
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash
+              yum update -y
+              yum install -y java-11-amazon-corretto
+              mkdir /var/app
+              cd /var/app
+              aws s3api get-object --bucket mb-bucket-course --key attachment.jar attachment.jar
+              java -jar /var/app/attachment.jar
+  # Create Auto-Scaling Group
+  WebServerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: WebServerAutoScalingGroup
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      MinSize: 0
+      DesiredCapacity: 1
+      MaxSize: 2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebServerLaunchTemplate
+        Version: 1
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+      Tags:
+        - Key: Name
+          PropagateAtLaunch: false
+          Value: !Sub ${AWS::StackName}-WebServer-AutoScalingGroup
+  # Create DB Instance
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: DBSubnetGroup
+      DBSubnetGroupDescription: DB subnet group for vpc db subnet
+      SubnetIds:
+        - !Ref DatabaseSubnetA
+        - !Ref DatabaseSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabaseSubnetGroup
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: Postgres
+      DBInstanceClass: !Ref DBInstanceType
+      AllocatedStorage: !Ref DBAllocatedStorage
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      EnableIAMDatabaseAuthentication: true
+      VPCSecurityGroups:
+        - !Ref PostgresSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DBInstance
+    DeletionPolicy: Snapshot
+  ReplicaDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      SourceDBInstanceIdentifier: !Ref DBInstance
+      DBInstanceClass: !Ref DBInstanceType
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-ReplicaDBInstance
+  # Create S3 bucket for uploaded files
+  UploadedFilesS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: attachments
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-UploadedFiles-Bucket
