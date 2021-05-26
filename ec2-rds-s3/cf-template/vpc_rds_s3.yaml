@@ -339,6 +339,9 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonRDSFullAccess
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/ElasticLoadBalancingReadOnly
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-AttachmentIAMRole
@@ -358,6 +361,9 @@ Resources:
       Subnets:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
+      SecurityGroups:
+        - !Ref HttpsSecurityGroup
+        - !Ref PingSecurityGroup
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-ApplicationLoadBalancer
@@ -365,6 +371,8 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: ALBTargetGroup
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: 8080
       HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
@@ -471,9 +479,26 @@ Resources:
   UploadedFilesS3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: attachments
+      BucketName: mb-uploaded-files-bucket
       VersioningConfiguration:
         Status: Enabled
       Tags:
       - Key: Name
         Value: !Sub ${AWS::StackName}-UploadedFiles-Bucket
+  # Create SNS topic
+  UploadNotificatioTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: upload-notification-topic
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Upload-Notification-Topic
+  # Create SQS queue
+  UploadNotificatioQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: upload-notification-queue
+      VisibilityTimeout: 90
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Upload-Notification-Queue

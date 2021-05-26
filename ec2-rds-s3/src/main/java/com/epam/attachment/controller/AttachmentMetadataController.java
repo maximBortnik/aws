@@ -19,18 +19,18 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/attachment")
+@RequestMapping("/api/v1/attachments")
 @RequiredArgsConstructor
 public class AttachmentMetadataController {
 
     private final AttachmentMetadataService service;
 
-    @GetMapping("/")
+    @GetMapping
     public ResponseEntity<List<AttachmentMetadataDto>> findAll() {
         return ResponseEntity.ok(service.findAll());
     }
 
-    @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AttachmentMetadataDto> upload(@RequestParam("file") MultipartFile multipartFile) {
         var attachmentMetadataDto = service.create(multipartFile);
         return new ResponseEntity<>(attachmentMetadataDto, HttpStatus.CREATED);
