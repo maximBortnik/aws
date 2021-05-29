@@ -25,15 +25,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 
-	implementation 'org.springframework.cloud:spring-cloud-starter-aws'
+	implementation 'org.springframework.cloud:spring-cloud-starter-aws-messaging'
 	implementation 'org.springframework.cloud:spring-cloud-starter-aws-jdbc'
 	implementation 'org.postgresql:postgresql:42.2.4'
 
 	implementation 'com.amazonaws:aws-java-sdk-elasticloadbalancingv2:1.11.792'
-
-
-
-	implementation 'org.springframework.cloud:spring-cloud-aws-messaging'
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

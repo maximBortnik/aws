@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  AWS CloudFormation Template for lambda
+Parameters:
+  S3Bucket:
+    Description: S3 bucket name
+    Type: String
+    Default: mb-bucket-course
+    MinLength: 1
+    MaxLength: 64
+  S3Key:
+    Description: Jar file name
+    Type: String
+    Default: sqs-sns-lambda-aws.jar
+    MinLength: 1
+    MaxLength: 64
+  Email:
+    Description: Subscription email for topic
+    Type: String
+    Default: email@gmail.com
+    MinLength: 1
+    MaxLength: 64
+Resources:
+  # Create SNS topic
+  NotificatioTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: notification-topic
+      Subscription:
+        - Endpoint: !Ref Email
+          Protocol: email
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Notification-Topic
+  # Create SQS queue
+  NotificatioQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: notification-queue
+      VisibilityTimeout: 90
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Notification-Queue
+  # Create lambda role
+  SqsSnsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SqsSnsLambdaRole
+      Description: IAM Role for Lambda to access CloudWatch, SNS, SQS
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-SqsSnsLambdaRole
+  # Create lambda
+  SqsSnsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+      FunctionName: SqsSnsLambda
+      Description: Receive a sqs event and sent it to sns for email notification
+      Handler: com.epam.sqssnslambda.SqsEventHandler
+      Runtime: java11
+      Timeout: 60
+      MemorySize: 512
+      Role: !GetAtt SqsSnsLambdaRole.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-SqsSnsLambda
+  # Create trigger from sqs
+  SqsEventMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 5
+      Enabled: true
+      FunctionName: !Ref SqsSnsLambda
+      EventSourceArn: !GetAtt NotificatioQueue.Arn
