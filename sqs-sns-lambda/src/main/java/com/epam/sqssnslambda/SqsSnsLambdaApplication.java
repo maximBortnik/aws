@@ -11,5 +11,4 @@ public class SqsSnsLambdaApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(SqsSnsLambdaApplication.class, args);
 	}
-// https://s3.eu-central-1.amazonaws.com/mb-lambda-sqs-sns/sqs-sns-lambda-2.3.4.RELEASE-aws.jar
 }
