@@ -460,6 +460,7 @@ Resources:
       MasterUsername: !Ref DBUser
       MasterUserPassword: !Ref DBPassword
       DBSubnetGroupName: !Ref DBSubnetGroup
+      BackupRetentionPeriod: 0
       EnableIAMDatabaseAuthentication: true
       VPCSecurityGroups:
         - !Ref PostgresSecurityGroup
